@@ -17,7 +17,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag dani251/tex-pdf-builder:tagname:latest
+      run: docker build . --file Dockerfile --tag dani251/tex-pdf-builder:latest
     - name: Push Docker image
       run: |
         IMAGE_NAME=dani251/tex-pdf-builder
