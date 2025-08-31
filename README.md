@@ -1,6 +1,8 @@
 # tex-pdf-builder
 Image to build latex with thre recipe: pdflatex -> biber pdflatex * 2
 
+latex to PDF image Dockerhub: https://hub.docker.com/r/dani251/tex-pdf-builder
+
 Usage: 
 ```
 build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
