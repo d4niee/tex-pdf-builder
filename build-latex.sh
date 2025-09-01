@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
+# View on Github: https://github.com/d4niee/tex-pdf-builder
+# View on Dockerhub: https://hub.docker.com/repository/docker/dani251/tex-pdf-builder
+
+set -euo pipefail # if used in a pipeline
+
+# helping script
 usage() {
   cat <<EOF
 Usage: build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
@@ -14,12 +19,13 @@ Examples:
 EOF
 }
 
+# default params
 SOURCE="main.tex"
 OUTPUT="output.pdf"
 WORKDIR="/work"
 LATEX_OPTS="-interaction=nonstopmode -halt-on-error -file-line-error"
 
-# Args parsen
+# Args parsing
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -s|--source) SOURCE="$2"; shift 2;;
@@ -34,7 +40,7 @@ done
 cd "$WORKDIR"
 
 if [[ ! -f "$SOURCE" ]]; then
-  echo "ERROR: Quelle nicht gefunden: $WORKDIR/$SOURCE" >&2
+  echo "[404] ERROR: source not found: $WORKDIR/$SOURCE" >&2
   exit 2
 fi
 
@@ -59,10 +65,10 @@ if [[ -f "${BASENAME}.pdf" ]]; then
   cp "${BASENAME}.pdf" "$OUTPUT"
   echo "==> Fertig: $WORKDIR/$OUTPUT"
 else
-  echo "ERROR: PDF nicht gefunden (${BASENAME}.pdf). Prüfe $LOGFILE" >&2
+  echo "[404] ERROR: PDF not found (${BASENAME}.pdf). Please check for more informations: $LOGFILE" >&2
   exit 3
 fi
 
 echo
-echo "==> Ende. Letzte Zeilen aus ${LOGFILE}:"
+echo "==> Finished!. Last log: ${LOGFILE}:"
 tail -n 20 "$LOGFILE" || true
