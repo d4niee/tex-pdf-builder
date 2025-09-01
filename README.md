@@ -13,6 +13,16 @@ build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
   -w, --workdir      Working directory inside the container (default: /work)
       --latex-opts   Additional options for pdflatex (e.g., “-interaction=nonstopmode”)
 ```
+
+## building the image
+
+```bash
+# FULL (all packages and features)
+docker build --build-arg TL_SCHEME=full -t tex-pdf-builder:full .
+# SLIM (minimal installation)
+docker build --build-arg TL_SCHEME=small -t tex-pdf-builder:slim .
+```
+
 ## Examples
 ```
   docker run --rm -v "\$PWD/latex:/work" IMAGE
