@@ -26,8 +26,8 @@ docker build --build-arg TL_SCHEME=small -t tex-pdf-builder:slim .
 ## Tags
 
 The Image is available with the following tags:
-* full: full installation of tex live with all packages. If you don't know what you exactly need this image is recommend
-* slim: minimal installation for texlive. If you encounter errors with this image you should probably choose the full version
+* ``full``: full installation of tex live with all packages. If you don't know what you exactly need this image is recommend
+* ``slim``: minimal installation for texlive. If you encounter errors with this image you should probably choose the full version
 
 ## Examples
 ```
