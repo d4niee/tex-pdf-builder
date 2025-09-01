@@ -3,6 +3,8 @@ Image to build latex with thre recipe: pdflatex -> biber pdflatex * 2
 
 latex to PDF image Dockerhub: https://hub.docker.com/r/dani251/tex-pdf-builder
 
+**disclaimer**: this image is based on the following image: registry.gitlab.com/islandoftex/images/texlive:latest
+
 ## Usage of the Image
 ```
 build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
