@@ -4,22 +4,33 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: dani251/tex-pdf-builder
+      LATEST_FROM: full
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag dani251/tex-pdf-builder:latest
-    - name: Push Docker image
-      run: |
-        IMAGE_NAME=dani251/tex-pdf-builder
-        TAG=latest
-        docker push $IMAGE_NAME:$TAG
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build images (full & slim)
+        run: |
+          docker build . --build-arg TL_SCHEME=full  --file Dockerfile --tag ${IMAGE_NAME}:full
+          docker build . --build-arg TL_SCHEME=small --file Dockerfile --tag ${IMAGE_NAME}:slim
+
+      - name: Tag latest
+        run: |
+          docker tag ${IMAGE_NAME}:${LATEST_FROM} ${IMAGE_NAME}:latest
+
+      - name: Push images (full, slim & latest)
+        run: |
+          docker push ${IMAGE_NAME}:full
+          docker push ${IMAGE_NAME}:slim
+          docker push ${IMAGE_NAME}:latest
