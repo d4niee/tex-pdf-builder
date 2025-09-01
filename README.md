@@ -3,7 +3,7 @@ Image to build latex with thre recipe: pdflatex -> biber pdflatex * 2
 
 latex to PDF image Dockerhub: https://hub.docker.com/r/dani251/tex-pdf-builder
 
-## Usage: 
+## Usage of the Image
 ```
 build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
   -s, --source       Root .tex file (default: main.tex)
@@ -11,7 +11,7 @@ build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
   -w, --workdir      Working directory inside the container (default: /work)
       --latex-opts   Additional options for pdflatex (e.g., “-interaction=nonstopmode”)
 ```
-## Examples:
+## Examples
 ```
   docker run --rm -v "\$PWD/latex:/work" IMAGE
   docker run --rm -v "\$PWD/latex:/work" IMAGE -s thesis.tex -o Thesis.pdf
@@ -22,7 +22,7 @@ Here some examples how we can use the image to automatically build latex projekt
 track your latex projekt with git.
 ### Gitlab
 
-```
+```yml
 "🔨 Recipe: pdflatex -> biber -> pdflatex * 2":
   image:
     name: docker.io/dani251/tex-pdf-builder:latest
@@ -43,7 +43,7 @@ track your latex projekt with git.
 
 ### Github Actions
 
-```
+```yml
 name: Build LaTeX PDF
 on:
   push:
