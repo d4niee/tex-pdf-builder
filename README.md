@@ -1,3 +1,5 @@
+[![Docker Image CI](https://github.com/d4niee/tex-pdf-builder/actions/workflows/docker-image.yml/badge.svg)](https://github.com/d4niee/tex-pdf-builder/actions/workflows/docker-image.yml)
+
 # tex-pdf-builder
 Image to build latex with thre recipe: pdflatex -> biber pdflatex * 2
 
