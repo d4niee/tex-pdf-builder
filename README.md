@@ -1,6 +1,9 @@
 [![Docker Image CI](https://github.com/d4niee/tex-pdf-builder/actions/workflows/docker-image.yml/badge.svg)](https://github.com/d4niee/tex-pdf-builder/actions/workflows/docker-image.yml)
 
 # tex-pdf-builder
+<p align="center">
+<img width="30%" height="30%" align="center" src="https://github.com/d4niee/tex-pdf-builder/blob/main/.github/image.png" alt="logo">
+</p>
 Image to build latex with thre recipe: pdflatex -> biber pdflatex * 2
 
 latex to PDF image Dockerhub: https://hub.docker.com/r/dani251/tex-pdf-builder
