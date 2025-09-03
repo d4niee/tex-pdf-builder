@@ -22,7 +22,7 @@ ARG TL_PKGS_EXTRA="latexmk biblatex biber csquotes babel babel-german microtype 
                    lm kpfonts xurl background epigraph cprotect scalerel nextpage \
                    glossaries-extra datatool tracklang pifont pgf pgfplots xcolor colortbl \
                    pdfpages pdflscape booktabs tabularx multirow threeparttable enumitem \
-                   biblatex-apa koma-script xstring bigfoot footmisc \
+                   biblatex-apa koma-script xstring bigfoot footmisc newtxmath newtxtext \
                    datetime2 datetime2-english datetime2-german babel-english lipsum \
                    collection-latexextra"
 
@@ -98,3 +98,4 @@ WORKDIR /work
 ENV PATH="/usr/local/texlive/current/bin/x86_64-linux:/usr/local/texlive/current/bin/aarch64-linux:${PATH}"
 
 ENTRYPOINT ["build-latex"]
+
