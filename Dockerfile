@@ -17,10 +17,13 @@ ARG TL_MIRRORS="https://ftp.fau.de/ctan/systems/texlive/tlnet \
                 https://mirror.kumi.systems/ctan/systems/texlive/tlnet \
                 https://ctan.ijs.si/tex-archive/systems/texlive/tlnet"
 
+# minimum required for running KOMA-Script + biblatex/biber + APA
 ARG TL_PKGS_EXTRA="latexmk biblatex biber csquotes babel babel-german microtype \
                    lmodern kpfonts xurl background epigraph cprotect scalerel \
                    glossaries-extra datatool tracklang pifont pgf pgfplots xcolor colortbl \
-                   pdfpages pdflscape booktabs tabularx multirow threeparttable enumitem"
+                   pdfpages pdflscape booktabs tabularx multirow threeparttable enumitem \
+                   biblatex-apa koma-script xstring \
+                   datetime2 datetime2-english datetime2-german babel-english"
 
 RUN set -eux; \
   curl -fsSL -o /tmp/install-tl-unx.tar.gz https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz; \
@@ -50,7 +53,8 @@ RUN set -eux; \
   ok_repo=""; for M in ${TL_MIRRORS}; do tlmgr option repository "$M" || true; \
     if tlmgr --repository "$M" update --self --all; then ok_repo="$M"; break; fi; done; \
   test -n "$ok_repo"; \
-  if [ -n "${TL_PKGS_EXTRA}" ]; then tlmgr --repository "$ok_repo" install ${TL_PKGS_EXTRA} || true; fi; \
+  if [ -n "${TL_PKGS_EXTRA}" ]; then tlmgr --repository "$ok_repo" install ${TL_PKGS_EXTRA}; fi; \
+  tlmgr info biblatex-apa | grep -q installed; \
   (luaotfload-tool -u || true); \
   CONF="$(find /usr/local/texlive -name texlive-fontconfig.conf | head -1 || true)"; \
   if [ -n "$CONF" ]; then mkdir -p /etc/fonts/conf.d && cp "$CONF" /etc/fonts/conf.d/09-texlive-fonts.conf; fi; \
@@ -66,3 +70,4 @@ WORKDIR /work
 ENV PATH="/usr/local/texlive/current/bin/x86_64-linux:/usr/local/texlive/current/bin/aarch64-linux:${PATH}"
 
 ENTRYPOINT ["build-latex"]
+
