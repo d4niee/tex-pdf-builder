@@ -1,93 +1,108 @@
 FROM debian:bookworm-slim AS base
 
-ARG DEBIAN_FRONTEND=noninteractive
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 TEXLIVE_INSTALL_NO_CONTEXT_CACHE=1 NOPERLDOC=1
+ARG GENERATE_CACHES=yes
+ARG DOCFILES=no
+ARG SRCFILES=no
+ARG TL_SCHEME=full
+ARG TLMIRRORURL=rsync://rsync.dante.ctan.org/CTAN/systems/texlive/tlnet/
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl perl fontconfig gpg unzip xz-utils make rsync \
-      ghostscript && \
-    rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /tmp
 
+# Basis-Tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl rsync gpg gpg-agent \
+      fontconfig python3 python3-pygments \
+      perl xz-utils unzip \
+  && rm -rf /var/lib/apt/lists/*
+
+
 FROM base AS texlive
 
-ARG TL_SCHEME=small
-ARG TL_MIRRORS="https://ftp.fau.de/ctan/systems/texlive/tlnet \
-                https://mirror.kumi.systems/ctan/systems/texlive/tlnet \
-                https://ctan.ijs.si/tex-archive/systems/texlive/tlnet"
+# Dummy-Paket "texlive-local" mit equivs
+RUN curl -fsSL https://tug.org/texlive/files/debian-equivs-2023-ex.txt -o texlive-local \
+ && sed -i "s/2023/9999/" texlive-local \
+ && apt-get update && apt-get install -qy --no-install-recommends equivs \
+ && equivs-build texlive-local \
+ && dpkg -i texlive-local_9999.99999999-1_all.deb || apt-get -qyf install \
+ && rm -rf ./*texlive* \
+ && apt-get remove -y --purge equivs \
+ && apt-get autoremove -qy --purge \
+ && rm -rf /var/lib/apt/lists/* && apt-get clean
 
-# minimum required for running KOMA-Script + biblatex/biber + APA
-ARG TL_PKGS_EXTRA="latexmk biblatex biber csquotes babel babel-german microtype \
-                   lm kpfonts xurl background epigraph cprotect scalerel nextpage \
-                   glossaries-extra datatool tracklang pifont pgf pgfplots xcolor colortbl \
-                   pdfpages pdflscape booktabs tabularx multirow threeparttable enumitem \
-                   biblatex-apa koma-script xstring bigfoot footmisc newtxmath newtxtext \
-                   datetime2 datetime2-english datetime2-german babel-english lipsum \
-                   collection-latexextra"
+# TeX Live via rsync spiegeln und per Profile installieren
+RUN echo "Fetching installation from mirror ${TLMIRRORURL}" \
+ && rsync -a --stats "${TLMIRRORURL}" texlive \
+ && cd texlive \
+ && echo "Building with documentation: ${DOCFILES}" \
+ && echo "Building with sources: ${SRCFILES}" \
+ && echo "Building with scheme: ${TL_SCHEME}" \
+ && printf "selected_scheme scheme-%s\n" "${TL_SCHEME}" > install.profile \
+ && if [ "${DOCFILES}" = "no" ]; then \
+        echo "tlpdbopt_install_docfiles 0" >> install.profile \
+        && echo "BUILD: Disabling documentation files"; \
+    fi \
+ && if [ "${SRCFILES}" = "no" ]; then \
+        echo "tlpdbopt_install_srcfiles 0" >> install.profile \
+        && echo "BUILD: Disabling source files"; \
+    fi \
+ && echo "tlpdbopt_autobackup 0" >> install.profile \
+ && echo "tlpdbopt_sys_bin /usr/bin" >> install.profile \
+ && ./install-tl -profile install.profile \
+ && cd .. && rm -rf texlive
 
-RUN set -eu; \
-  curl -fsSL -o /tmp/install-tl-unx.tar.gz https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz; \
-  mkdir -p /opt/texlive-installer; \
-  tar -xzf /tmp/install-tl-unx.tar.gz --strip-components=1 -C /opt/texlive-installer; \
-  YEAR="$(date +%Y)"; \
-  printf '%s\n' \
-    "selected_scheme scheme-${TL_SCHEME}" \
-    "TEXDIR /usr/local/texlive/${YEAR}" \
-    "TEXMFCONFIG ~/.texlive/${YEAR}/texmf-config" \
-    "TEXMFVAR ~/.texlive/${YEAR}/texmf-var" \
-    "TEXMFHOME ~/texmf" \
-    "TEXMFLOCAL /usr/local/texlive/texmf-local" \
-    "TEXMFSYSCONFIG /usr/local/texlive/${YEAR}/texmf-config" \
-    "TEXMFSYSVAR /usr/local/texlive/${YEAR}/texmf-var" \
-    "tlpdbopt_autobackup 0" \
-    "tlpdbopt_install_docfiles 0" \
-    "tlpdbopt_install_srcfiles 0" \
-    > /tmp/texlive.profile; \
-  /opt/texlive-installer/install-tl -profile /tmp/texlive.profile; \
-  ln -s /usr/local/texlive/${YEAR} /usr/local/texlive/current; \
-  echo 'export PATH="/usr/local/texlive/current/bin/x86_64-linux:/usr/local/texlive/current/bin/aarch64-linux:$PATH"' > /etc/profile.d/texlive.sh; \
-  chmod +x /etc/profile.d/texlive.sh; \
-  export PATH="/usr/local/texlive/current/bin/x86_64-linux:/usr/local/texlive/current/bin/aarch64-linux:$PATH"; \
-  \
-  TLMGR_OPTS="--verify-repo=none --persistent-downloads"; \
-  ok_repo=""; \
-  for M in ${TL_MIRRORS}; do \
-    echo "Trying TeX Live repo: $M"; \
-    tlmgr $TLMGR_OPTS option repository "$M" || true; \
-    if tlmgr $TLMGR_OPTS --repository "$M" update --self; then \
-      ok_repo="$M"; echo "Using repository: $ok_repo"; break; \
+WORKDIR /workdir
+
+RUN echo "Set PATH to ${PATH}" \
+ && "$(/usr/bin/find /usr/local/texlive -name tlmgr | head -n1)" path add \
+ && if [ "${TLMIRRORURL#*pretest}" != "${TLMIRRORURL}" ]; then \
+        tlmgr option repository "${TLMIRRORURL}"; \
+    fi \
+ && (sed -i '/package.loaded\["data-ini"\]/a if os.selfpath then environment.ownbin=lfs.symlinktarget(os.selfpath..io.fileseparator..os.selfname);environment.ownpath=environment.ownbin:match("^.*"..io.fileseparator) else environment.ownpath=kpse.new("luatex"):var_value("SELFAUTOLOC");environment.ownbin=environment.ownpath..io.fileseparator..(arg[-2] or arg[-1] or arg[0] or "luatex"):match("[^"..io.fileseparator.."]*$") end' /usr/bin/mtxrun.lua || true) \
+ # Optionale Cache-/ConTeXt-Generierung
+ && if [ "${GENERATE_CACHES}" = "yes" ]; then \
+        echo "Generating caches and ConTeXt files" \
+        && (luaotfload-tool -u || true) \
+        && (cp "$(/usr/bin/find /usr/local/texlive -name texlive-fontconfig.conf | head -n1)" /etc/fonts/conf.d/09-texlive-fonts.conf || true) \
+        && fc-cache -fsv \
+        && if [ -f "/usr/bin/context" ]; then \
+              mtxrun --generate \
+              && texlua /usr/bin/mtxrun.lua --luatex --generate \
+              && context --make \
+              && context --luatex --make; \
+           fi; \
+    else \
+        echo "Not generating caches or ConTeXt files"; \
+    fi
+
+RUN echo "== Sanity check (non-fatal) =="; \
+  warn(){ printf 'WARNING: %s\n' "$*"; }; \
+  if [ "${TL_SCHEME:-}" = "full" ]; then \
+    for cmd in latex biber xindy arara context asy; do \
+      if command -v "$cmd" >/dev/null 2>&1; then \
+        "$cmd" --version >/dev/null 2>&1 || warn "$cmd --version failed"; \
+      else \
+        warn "command '$cmd' not found in PATH"; \
+      fi; \
+      printf '\n'; \
+    done; \
+    # extra: context luatex
+    if command -v context >/dev/null 2>&1; then \
+      context --luatex --version >/dev/null 2>&1 || warn "context --luatex --version failed"; \
     fi; \
-  done; \
-  test -n "$ok_repo"; \
-  tlmgr $TLMGR_OPTS --repository "$ok_repo" update --all || true; \
-  \
-  echo "Installing extra TL packages (non-fatal batch)…"; \
-  tlmgr $TLMGR_OPTS --repository "$ok_repo" install ${TL_PKGS_EXTRA} || true; \
-  \
-critical_pkgs="latexmk biblatex biber csquotes microtype \
-               babel babel-english babel-german \
-               biblatex-apa koma-script xstring \
-               datetime2 datetime2-english datetime2-german \
-               lm kpfonts xurl background epigraph cprotect scalerel nextpage \
-               glossaries-extra datatool tracklang pgf pgfplots xcolor colortbl \
-               pdfpages pdflscape booktabs tabularx multirow threeparttable enumitem pifont"; \
-  for P in $critical_pkgs; do \
-    if ! tlmgr info --only-installed "$P" >/dev/null 2>&1; then \
-      echo "Missing critical package '$P' → retry install…"; \
-      tlmgr $TLMGR_OPTS --repository "$ok_repo" install --reinstall "$P" || true; \
-      tlmgr info --only-installed "$P" >/dev/null 2>&1 || { echo "ERROR: package '$P' still missing"; exit 1; }; \
+    # optionale Checks
+    if [ "${DOCFILES:-}" = "yes" ]; then \
+      texdoc -l geometry >/dev/null 2>&1 || warn "texdoc geometry lookup failed"; \
     fi; \
-  done; \
-  \
-  echo "Refreshing filename database and font maps…"; \
-  mktexlsr || true; \
-  updmap-sys --syncwithtrees || true; \
-  (luaotfload-tool -u || true); \
-  CONF="$(find /usr/local/texlive -name texlive-fontconfig.conf | head -1 || true)"; \
-  if [ -n "$CONF" ]; then mkdir -p /etc/fonts/conf.d && cp "$CONF" /etc/fonts/conf.d/09-texlive-fonts.conf; fi; \
-  fc-cache -fsv || true; \
-  rm -rf /tmp/install-tl-unx.tar.gz /opt/texlive-installer /tmp/texlive.profile /usr/local/texlive/*/tlpkg/backups
+    if [ "${SRCFILES:-}" = "yes" ]; then \
+      kpsewhich amsmath.dtx >/dev/null 2>&1 || warn "kpsewhich amsmath.dtx not found"; \
+    fi; \
+  fi; \
+  (python3 --version >/dev/null 2>&1 || warn "python3 not found"); printf '\n'; \
+  (pygmentize -V   >/dev/null 2>&1 || warn "pygmentize not found"); printf '\n'; \
+  true
+
 
 FROM texlive AS builder
 
@@ -97,5 +112,11 @@ RUN chmod +x /usr/local/bin/build-latex
 WORKDIR /work
 ENV PATH="/usr/local/texlive/current/bin/x86_64-linux:/usr/local/texlive/current/bin/aarch64-linux:${PATH}"
 
+# Custom Source und Output
+#docker run --rm -v "latex:/work" dani251/tex-pdf-builder:latest -s thesis.tex -o Thesis.pdf
+#docker run --rm -u "$(id -u):$(id -g)" -v "latex:/work" dani251/tex-pdf-builder:latest -s main.tex -o Lambrecht_Masterarbeit.pdf
 ENTRYPOINT ["build-latex"]
 
+LABEL org.opencontainers.image.authors="tex-pdf-builder" \
+      org.opencontainers.image.url="https://github.com/d4niee/tex-pdf-builder" \
+      org.opencontainers.image.source="https://github.com/d4niee/tex-pdf-builder/blob/main/Dockerfile"
