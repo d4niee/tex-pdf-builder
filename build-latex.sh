@@ -5,15 +5,25 @@
 set -euo pipefail
 
 usage() {
-  cat <<EOF
-Usage: build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
-  -s, --source       root .tex file (default: main.tex)
-  -o, --output       output file (default: output.pdf) — kann auch außerhalb von WORKDIR liegen
-  -w, --workdir      Working directory (default: /work)
-      --latex-opts   Additional options for pdflatex (default: "-interaction=nonstopmode -halt-on-error -file-line-error")
-Examples:
-  docker run --rm -v "\$PWD/latex:/work" IMAGE
-  docker run --rm -v "\$PWD/latex:/work" IMAGE -s thesis.tex -o Thesis.pdf
+  cat <<'EOF'
+Usage: build-latex [-s main.tex] [-o output.pdf] [-w /workdir]
+                   [--latex-opts "..."] [--latexmk-opts "..."]
+                   [-r|--recipe pdflatex|latexmk-xelatex|latexmk-lualatex]
+                   [-C|--final-clean] [--final-clean-dir DIR]
+
+  -s, --source            root .tex file (default: main.tex)
+  -o, --output            output file (default: output.pdf) — kann auch außerhalb von WORKDIR liegen
+  -w, --workdir           working directory (default: /work)
+      --latex-opts        opts für (pdf|xe|lua)latex (default: "-interaction=nonstopmode -halt-on-error -file-line-error")
+      --latexmk-opts      zusätzliche latexmk-Optionen (default: "-synctex=1")
+  -r, --recipe            pdflatex | latexmk-xelatex | latexmk-lualatex (default: pdflatex)
+  -C, --final-clean       LaTeX-Tempfiles NACH PDF-Erstellung löschen (off)
+      --final-clean-dir   Zielverzeichnis für Clean (default: --workdir)
+
+Beispiele:
+  docker run --rm -v "$PWD/latex:/work" IMAGE
+  docker run --rm -v "$PWD/latex:/work" IMAGE -s thesis.tex -o Thesis.pdf
+  docker run --rm -v "$PWD/latex:/work" IMAGE -r latexmk-xelatex
 EOF
 }
 
@@ -22,6 +32,10 @@ SOURCE="main.tex"
 OUTPUT="output.pdf"
 WORKDIR="/work"
 LATEX_OPTS="-interaction=nonstopmode -halt-on-error -file-line-error"
+LATEXMK_OPTS="-synctex=1"
+RECIPE="pdflatex"
+FINAL_CLEAN=false
+FINAL_CLEAN_DIR=""
 
 # args
 while [[ $# -gt 0 ]]; do
@@ -30,6 +44,10 @@ while [[ $# -gt 0 ]]; do
     -o|--output) OUTPUT="$2"; shift 2;;
     -w|--workdir) WORKDIR="$2"; shift 2;;
     --latex-opts) LATEX_OPTS="$2"; shift 2;;
+    --latexmk-opts) LATEXMK_OPTS="$2"; shift 2;;
+    -r|--recipe) RECIPE="$2"; shift 2;;
+    -C|--final-clean) FINAL_CLEAN=true; shift;;
+    --final-clean-dir) FINAL_CLEAN_DIR="$2"; shift 2;;
     -h|--help) usage; exit 0;;
     *) echo "Unknown arg: $1"; usage; exit 1;;
   esac
@@ -47,19 +65,49 @@ LOGFILE="${BASENAME}.log"
 
 echo "==> Building $SOURCE -> $OUTPUT"
 echo "==> Workdir: $WORKDIR"
-echo "==> pdflatex opts: $LATEX_OPTS"
+echo "==> Recipe : $RECIPE"
+echo "==> LaTeX opts: $LATEX_OPTS"
 echo
 
-# Build passes
-pdflatex $LATEX_OPTS "$SOURCE" || true
+build_pdflatex() {
+  pdflatex $LATEX_OPTS "$SOURCE"
+  if [[ -f "${BASENAME}.bcf" ]]; then
+    echo "==> Running biber"
+    biber "$BASENAME"
+  fi
+  pdflatex $LATEX_OPTS "$SOURCE"
+  pdflatex $LATEX_OPTS "$SOURCE"
+}
 
-if [[ -f "${BASENAME}.bcf" ]]; then
-  echo "==> Running biber"
-  biber "$BASENAME" || true
-fi
+build_latexmk_engine() {
+  local engine_flag="$1"   # -xelatex | -lualatex
+  # sauber starten, aber Fehler ignorieren falls nix da
+  latexmk -C >/dev/null 2>&1 || true
+  # erster Lauf
+  latexmk $engine_flag -latexoption="$LATEX_OPTS" $LATEXMK_OPTS "$SOURCE"
+  # robuster Biber-Fallback: falls LaTeX um Biber bittet, nachholen & erneut bauen
+  if grep -q "Please (re)run Biber" "$LOGFILE" 2>/dev/null; then
+    echo "==> latexmk requested biber — running biber + rebuild"
+    biber "$BASENAME" || true
+    latexmk $engine_flag -latexoption="$LATEX_OPTS" $LATEXMK_OPTS "$SOURCE"
+  fi
+}
 
-pdflatex $LATEX_OPTS "$SOURCE" || true
-pdflatex $LATEX_OPTS "$SOURCE" || true
+case "$RECIPE" in
+  pdflatex)
+    build_pdflatex
+    ;;
+  latexmk-xelatex|xelatex)
+    build_latexmk_engine -xelatex
+    ;;
+  latexmk-lualatex|lualatex)
+    build_latexmk_engine -lualatex
+    ;;
+  *)
+    echo "[400] ERROR: unknown recipe '$RECIPE' (use: pdflatex | latexmk-xelatex | latexmk-lualatex)" >&2
+    exit 4
+    ;;
+esac
 
 # Copy result
 if [[ -f "${BASENAME}.pdf" ]]; then
@@ -70,38 +118,27 @@ else
   exit 3
 fi
 
-# -------------------- CLEANUP --------------------
-echo
-echo "==> Cleaning up LaTeX temp files in $WORKDIR …"
-
-shopt -s nullglob dotglob
-
-CLEAN_GLOBS=(
-  "*.aux" "*.log" "*.toc" "*.lof" "*.lot" "*.bbl" "*.blg" "*.out"
-  "*.fls" "*.fdb_latexmk" "*.synctex.gz" "*.idx" "*.ind" "*.ilg"
-  "*.nav" "*.snm" "*.vrb" "*.dvi" "*.ps" "*.bcf" "*.synctex(busy)"
-  "*.run.xml" "*.bbl-SAVE-ERROR" "*.bcf-SAVE-ERROR"
-)
-
-removed=0
-for g in "${CLEAN_GLOBS[@]}"; do
-  for f in $g; do
-    if [[ -f "$f" ]]; then
-      rm -f -- "$f" && ((removed++)) || true
-    fi
-  done
-done
-echo "   -> removed ${removed} temp files"
-
-OUTPUT_BASENAME="$(basename -- "$OUTPUT")"
-pdf_removed=0
-for f in *.pdf; do
-  if [[ "$(basename -- "$f")" != "$OUTPUT_BASENAME" ]]; then
-    rm -f -- "$f" && ((pdf_removed++)) || true
-  fi
-done
-echo "   -> removed ${pdf_removed} other PDF(s) in $WORKDIR (kept: ${OUTPUT_BASENAME})"
-
 echo
 echo "==> Finished. Tail of ${LOGFILE}:"
-tail -n 20 "$LOGFILE" || true
+tail -n 40 "$LOGFILE" || true
+
+# -------------------- OPTIONAL FINAL CLEAN (beliebiges Zielverzeichnis) --------------------
+if [[ "$FINAL_CLEAN" == true ]]; then
+  TARGET_DIR="${FINAL_CLEAN_DIR:-$WORKDIR}"
+  echo
+  echo "==> Final cleanup in ${TARGET_DIR} …"
+  shopt -s nullglob dotglob
+  FINAL_GLOBS=(
+    "*.aux" "*.log" "*.toc" "*.lof" "*.lot" "*.bbl" "*.blg" "*.out"
+    "*.fls" "*.fdb_latexmk" "*.synctex.gz" "*.idx" "*.ind" "*.ilg"
+    "*.nav" "*.snm" "*.vrb" "*.dvi" "*.ps" "*.bcf" "*.synctex(busy)"
+    "*.run.xml" "*.bbl-SAVE-ERROR" "*.bcf-SAVE-ERROR"
+  )
+  final_removed=0
+  for g in "${FINAL_GLOBS[@]}"; do
+    for f in "${TARGET_DIR}"/$g; do
+      [[ -f "$f" ]] && rm -f -- "$f" && ((final_removed++)) || true
+    done
+  done
+  echo "   -> removed ${final_removed} temp files in ${TARGET_DIR}"
+fi
