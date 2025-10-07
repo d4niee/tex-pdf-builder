@@ -91,6 +91,8 @@ build_latexmk_engine() {
     biber "$BASENAME" || true
     latexmk $engine_flag -latexoption="$LATEX_OPTS" $LATEXMK_OPTS "$SOURCE"
   fi
+  # final noch einmal bauen
+  latexmk $engine_flag -latexoption="$LATEX_OPTS" $LATEXMK_OPTS "$SOURCE"
 }
 
 case "$RECIPE" in
