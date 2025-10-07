@@ -12,11 +12,24 @@ latex to PDF image Dockerhub: https://hub.docker.com/r/dani251/tex-pdf-builder
 
 ## Usage of the Image
 ```
-build-latex [-s main.tex] [-o output.pdf] [-w /workdir] [--latex-opts "..."]
-  -s, --source       Root .tex file (default: main.tex)
-  -o, --output       output file (default: output.pdf)
-  -w, --workdir      Working directory inside the container (default: /work)
-      --latex-opts   Additional options for pdflatex (e.g., “-interaction=nonstopmode”)
+Usage: build-latex [-s main.tex] [-o output.pdf] [-w /workdir]
+                   [--latex-opts "..."] [--latexmk-opts "..."]
+                   [-r|--recipe pdflatex|latexmk-xelatex|latexmk-lualatex]
+                   [-C|--final-clean] [--final-clean-dir DIR]
+
+  -s, --source            root .tex file (default: main.tex)
+  -o, --output            output file (default: output.pdf) — kann auch außerhalb von WORKDIR liegen
+  -w, --workdir           working directory (default: /work)
+      --latex-opts        opts für (pdf|xe|lua)latex (default: "-interaction=nonstopmode -halt-on-error -file-line-error")
+      --latexmk-opts      zusätzliche latexmk-Optionen (default: "-synctex=1")
+  -r, --recipe            pdflatex | latexmk-xelatex | latexmk-lualatex (default: pdflatex)
+  -C, --final-clean       LaTeX-Tempfiles NACH PDF-Erstellung löschen (off)
+      --final-clean-dir   Zielverzeichnis für Clean (default: --workdir)
+
+Beispiele:
+  docker run --rm -v "$PWD/latex:/work" IMAGE
+  docker run --rm -v "$PWD/latex:/work" IMAGE -s thesis.tex -o Thesis.pdf
+  docker run --rm -v "$PWD/latex:/work" IMAGE -r latexmk-xelatex
 ```
 
 ## building the image
