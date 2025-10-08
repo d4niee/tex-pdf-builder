@@ -146,6 +146,12 @@ RUN echo "Set PATH to ${PATH}" \
     else \
         echo "Not generating caches or ConTeXt files"; \
     fi
+# install math fonts
+RUN tlmgr update --self --all || true \
+ && tlmgr install tex-gyre tex-gyre-math xits unicode-math fontspec xetex \
+ && luaotfload-tool -u || true \
+ && (cp "$(/usr/bin/find /usr/local/texlive -name texlive-fontconfig.conf | head -n1)" /etc/fonts/conf.d/09-texlive-fonts.conf || true) \
+ && fc-cache -fsv || true
 
 # -----------------------------------------------------------------------------
 # Non-fatal sanity checks:
@@ -207,3 +213,4 @@ ENTRYPOINT ["build-latex"]
 LABEL org.opencontainers.image.authors="tex-pdf-builder" \
       org.opencontainers.image.url="https://github.com/d4niee/tex-pdf-builder" \
       org.opencontainers.image.source="https://github.com/d4niee/tex-pdf-builder/blob/main/Dockerfile"
+
