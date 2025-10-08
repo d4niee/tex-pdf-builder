@@ -2,7 +2,7 @@
 ###############################################################################
 # TeX Live builder image (multi-arch friendly: works on amd64 and arm64)
 # - Base: Debian bookworm-slim (multi-arch official image)
-# - Installs TeX Live via rsync + install-tl (full scheme by default)
+# - Installs TeX Live via HTTPS installer + install-tl (full scheme by default)
 # - Generates optional caches (fontconfig, luaotfload, ConTeXt)
 # - Provides a simple entrypoint script `build-latex`
 #
@@ -25,8 +25,8 @@ ARG GENERATE_CACHES=yes             # Generate font caches & ConTeXt formats to 
 ARG DOCFILES=no                     # Include TeX doc files (larger image). "yes" or "no"
 ARG SRCFILES=no                     # Include TeX source files (larger image). "yes" or "no"
 ARG TL_SCHEME=full                  # TeX Live scheme (e.g., full / small / basic / medium)
-# Fast German mirror via rsync; change if unavailable in your environment:
-ARG TLMIRRORURL=rsync://rsync.dante.ctan.org/CTAN/systems/texlive/tlnet/
+# Prefer HTTPS; rsync often blocked in CI/buildx networks:
+ARG TLMIRRORURL=https://mirror.ctan.org/systems/texlive/tlnet/
 
 ############################
 # Base stage
@@ -41,7 +41,7 @@ WORKDIR /tmp
 
 # -----------------------------------------------------------------------------
 # Install base tools:
-# - ca-certificates, curl, rsync: fetching mirrors / data
+# - ca-certificates, curl: fetching over HTTPS
 # - gpg, gpg-agent: signature checks (if needed)
 # - fontconfig: needed for font cache generation
 # - python3 + pygments: pygmentize (often used in LaTeX listings)
@@ -49,7 +49,7 @@ WORKDIR /tmp
 # -----------------------------------------------------------------------------
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl rsync gpg gpg-agent \
+      ca-certificates curl gpg gpg-agent \
       fontconfig python3 python3-pygments \
       perl xz-utils unzip \
     && rm -rf /var/lib/apt/lists/*
@@ -78,34 +78,42 @@ RUN curl -fsSL https://tug.org/texlive/files/debian-equivs-2023-ex.txt -o texliv
  && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # -----------------------------------------------------------------------------
-# Mirror TeX Live installer tree via rsync and run install-tl with a profile.
+# Install TeX Live via HTTPS (robust in buildx/CI):
+# - Download official install-tl tarball
+# - Generate non-interactive profile
+# - Run installer against HTTPS repository (TLMIRRORURL)
 # Notes:
 #  - TL_SCHEME controls the size/features. "full" is large but hassle-free.
 #  - DOCFILES/SRCFILES can be disabled to reduce image size.
-#  - The installer will auto-detect the CPU arch and place binaries under
-#    /usr/local/texlive/<year>/bin/<arch>, e.g.:
-#      - x86_64-linux  (for linux/amd64)
-#      - aarch64-linux (for linux/arm64)
+#  - Installer auto-detects CPU and installs arch-specific binaries into:
+#      /usr/local/texlive/<year>/bin/<arch> (x86_64-linux / aarch64-linux)
 # -----------------------------------------------------------------------------
-RUN echo "Fetching installation from mirror ${TLMIRRORURL}" \
- && rsync -a --stats "${TLMIRRORURL}" texlive \
- && cd texlive \
- && echo "Building with documentation: ${DOCFILES}" \
- && echo "Building with sources: ${SRCFILES}" \
- && echo "Building with scheme: ${TL_SCHEME}" \
- && printf "selected_scheme scheme-%s\n" "${TL_SCHEME}" > install.profile \
- && if [ "${DOCFILES}" = "no" ]; then \
-        echo "tlpdbopt_install_docfiles 0" >> install.profile && \
+ARG DOCFILES
+ARG SRCFILES
+ARG TL_SCHEME
+ARG TLMIRRORURL
+RUN set -eux; \
+    echo "Fetching TeX Live installer via HTTPS from ${TLMIRRORURL}"; \
+    INSTALLER_TARBALL_URL="https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz"; \
+    curl -fsSL "$INSTALLER_TARBALL_URL" -o /tmp/install-tl.tar.gz; \
+    tar -xzf /tmp/install-tl.tar.gz -C /tmp; \
+    I_DIR="$(find /tmp -maxdepth 1 -type d -name 'install-tl-*' | head -n1)"; \
+    echo "Installer dir: ${I_DIR}"; \
+    # Build non-interactive profile
+    printf "selected_scheme scheme-%s\n" "${TL_SCHEME}" > /tmp/install.profile; \
+    if [ "${DOCFILES}" = "no" ]; then \
+        echo "tlpdbopt_install_docfiles 0" >> /tmp/install.profile; \
         echo "BUILD: Disabling documentation files"; \
-    fi \
- && if [ "${SRCFILES}" = "no" ]; then \
-        echo "tlpdbopt_install_srcfiles 0" >> install.profile && \
+    fi; \
+    if [ "${SRCFILES}" = "no" ]; then \
+        echo "tlpdbopt_install_srcfiles 0" >> /tmp/install.profile; \
         echo "BUILD: Disabling source files"; \
-    fi \
- && echo "tlpdbopt_autobackup 0" >> install.profile \
- && echo "tlpdbopt_sys_bin /usr/bin" >> install.profile \
- && ./install-tl -profile install.profile \
- && cd .. && rm -rf texlive
+    fi; \
+    echo "tlpdbopt_autobackup 0" >> /tmp/install.profile; \
+    echo "tlpdbopt_sys_bin /usr/bin" >> /tmp/install.profile; \
+    # Run installer against the HTTPS repo
+    "${I_DIR}/install-tl" -profile /tmp/install.profile -repository "${TLMIRRORURL}"; \
+    rm -rf /tmp/install-tl.tar.gz "${I_DIR}"
 
 # After installation, switch to a clean working directory
 WORKDIR /workdir
